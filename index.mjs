@@ -6,10 +6,8 @@ const runToolCounts = new Map();
 
 // ─── exec 脚本名识别（可自定义扩展）─────────────────────
 const EXEC_SCRIPT_PATTERNS = [
-  { re: /tools\/academic\.js/, name: "academic.js" },
-  { re: /tools\/pmphai\.js/, name: "pmphai.js" },
-  { re: /tools\/hgnc\.js/, name: "hgnc.js" },
-  { re: /tools\/google-books\.js/, name: "google-books.js" },
+  { re: /script\.js/, name: "script.js" },
+  { re: /task\.js/, name: "task.js" },
 ];
 
 function detectExecScript(command) {
