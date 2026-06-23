@@ -1,0 +1,15 @@
+{
+  "id": "tool-trace",
+  "name": "Tool Trace",
+  "description": "在每轮回复末尾附上本轮调用的工具统计",
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {},
+  "onCapabilities": ["hook"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

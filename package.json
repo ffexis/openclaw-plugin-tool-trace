@@ -1,0 +1,28 @@
+{
+  "name": "openclaw-plugin-tool-trace",
+  "version": "1.0.0",
+  "description": "在每个回复末尾自动附上本轮调用的工具统计",
+  "type": "module",
+  "private": false,
+  "openclaw": {
+    "extensions": ["./index.mjs"],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    }
+  },
+  "scripts": {
+    "patch:feishu": "node patch-feishu.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ffexis/openclaw-plugin-tool-trace.git"
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "tool-trace",
+    "feishu"
+  ],
+  "license": "MIT"
+}
