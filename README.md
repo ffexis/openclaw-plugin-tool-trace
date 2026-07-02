@@ -158,7 +158,6 @@ causing tool stats to appear on the wrong card.
 1. **FIFO Queue:** Replace the Map with an ordered queue so stats are consumed in dispatch order.
 2. **Run ID Tracking:** Include `runId` in the stats entry and match via `params.runId` (if available).
 3. **Hybrid Key:** Use `params.to` for group chats (direct match) and fallback to queue order for DMs.
-
 ---
 
 ## ⚙️ Customizing Exec Script Name Detection
