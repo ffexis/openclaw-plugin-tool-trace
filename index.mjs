@@ -6,10 +6,8 @@ const runToolCounts = new Map();
 
 // ─── exec 脚本名识别（可自定义扩展）─────────────────────
 const EXEC_SCRIPT_PATTERNS = [
-  { re: /tools\/academic\.js/, name: "academic.js" },
-  { re: /tools\/pmphai\.js/, name: "pmphai.js" },
-  { re: /tools\/hgnc\.js/, name: "hgnc.js" },
-  { re: /tools\/google-books\.js/, name: "google-books.js" },
+  { re: /script\.js/, name: "script.js" },
+  { re: /task\.js/, name: "task.js" },
 ];
 
 function detectExecScript(command) {
@@ -23,10 +21,7 @@ function detectExecScript(command) {
 function extractFeishuTargetId(sessionKey) {
   if (!sessionKey) return null;
   const parts = sessionKey.split(":");
-  let targetId = parts[parts.length - 1];
-  if (targetId?.startsWith("ou_")) return `user:${targetId}`;
-  if (targetId?.startsWith("oc_")) return `chat:${targetId}`;
-  return null;
+  return parts[parts.length - 1] || null;
 }
 
 export default definePluginEntry({

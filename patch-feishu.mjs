@@ -121,12 +121,15 @@ function patchFeishuSender() {
   }
 
   // 注入的拦截代码（严格语法，无需额外依赖）
+  // 注意：飞书 channel 串行处理，Map 中同一时间只有一条记录
+  // 因此不依赖 key 匹配，直接取第一条
   const injectedCode = `
 ${PATCH_MARKER}
 \ttry {
 \t\tconst statsMap = globalThis.__FEISHU_TOOL_STATS;
-\t\tif (statsMap && statsMap.has(params.to)) {
-\t\t\tconst counts = statsMap.get(params.to);
+\t\tif (statsMap && statsMap.size > 0) {
+\t\t\tconst entries = [...statsMap.entries()];
+\t\t\tconst [matchedKey, counts] = entries[0];
 \t\t\tconst parts = Object.entries(counts)
 \t\t\t\t.sort((a, b) => a[0].localeCompare(b[0]))
 \t\t\t\t.map(x => x[0] + '(' + x[1] + ')')
@@ -139,7 +142,7 @@ ${PATCH_MARKER}
 \t\t\t\t\tmainElement.content += suffix;
 \t\t\t\t}
 \t\t\t}
-\t\t\tstatsMap.delete(params.to);
+\t\t\tstatsMap.delete(matchedKey);
 \t\t}
 \t} catch(e) {}
 `;
