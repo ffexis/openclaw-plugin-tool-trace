@@ -155,12 +155,12 @@ after_tool_call → globalThis.__FEISHU_TOOL_STATS[targetId]
 
 `before_dispatch` hook auto-clears previous turn's residual stats on Feishu inbound.
 
-### Key Fix: ID Mismatch Resolution
+### Key Design: Serial Dispatch → First-Entry Consumption
 
-Feishu's `sendCardFeishu` receives `params.to` as a bare chat ID (e.g. `oc_xxx`),
-while the plugin stores stats keyed by the raw sessionKey tail (e.g. `ou_xxx` for DM, `oc_xxx` for group).
-Since Feishu dispatches are serialized per-channel, the patch reads the **first (and only)** entry
-from the stats Map instead of matching by key, avoiding ID format mismatches.
+Feishu channel dispatches are serialized — only one message is processed at a time.
+The plugin stores stats in `globalThis.__FEISHU_TOOL_STATS` as a `Map<targetId, counts>`,
+and the patches in `monitor.account` simply read the **first (and only)** entry.
+No key matching is needed.
 
 ### Known Issue: Concurrent DM + Group Chat
 
@@ -173,8 +173,8 @@ causing tool stats to appear on the wrong message.
 
 **Possible future solutions:**
 1. **FIFO Queue:** Replace the Map with an ordered queue so stats are consumed in dispatch order.
-2. **Run ID Tracking:** Include `runId` in the stats entry and match via `params.runId` (if available).
-3. **Hybrid Key:** Use `params.to` for group chats (direct match) and fallback to queue order for DMs.
+2. **Run ID Tracking:** Include `runId` in the stats entry and match via available context.
+3. **Per-Conversation Map:** Key by conversation ID (chat ID) instead of sessionKey tail.
 
 ---
 
@@ -372,25 +372,24 @@ after_tool_call → globalThis.__FEISHU_TOOL_STATS[targetId]
 
 `before_dispatch` hook 在飞书入站阶段自动清理上一轮的残留统计。
 
-### 关键修复：ID 不匹配问题
+### 关键设计：串行处理 → 取第一条
 
-飞书的 `sendCardFeishu` 收到的 `params.to` 是裸聊天 ID（如 `oc_xxx`），
-而插件存储的 key 是 sessionKey 末尾（单聊 `ou_xxx`、群聊 `oc_xxx`）。
-由于飞书 dispatch 是串行处理的，patch 直接取 stats Map 的**第一条（也是唯一一条）**记录，
-避免 ID 格式不匹配的问题。
+飞书 channel 是串行处理的——同一时间只有一条消息被处理。
+插件将统计信息存储在 `globalThis.__FEISHU_TOOL_STATS` 的 `Map<targetId, counts>` 中，
+monitor.account 里的 patch 直接取**第一条（也是唯一一条）**记录，无需 key 匹配。
 
 ### 已知问题：单聊与群聊并发
 
 如果单聊和群聊消息同时被处理（同一 channel 内），
 stats Map 在 patch 被触发时可能包含**两条记录**。
-这时 patch 读取第一条记录，可能导致工具统计显示在错误的卡片上。
+这时 patch 读取第一条记录，可能导致工具统计显示在错误的消息上。
 
 **当前解决方案：** 禁用机器人单聊，防止并发 dispatch。
 
 **可能的未来方案：**
 1. **FIFO 队列：** 用有序队列替代 Map，按 dispatch 顺序消费统计。
-2. **Run ID 追踪：** 在 stats 条目中包含 `runId`，通过 `params.runId` 匹配。
-3. **混合 Key：** 群聊直接用 `params.to` 匹配，单聊回退到队列顺序。
+2. **Run ID 追踪：** 在 stats 条目中包含 `runId`，通过可用上下文匹配。
+3. **按会话 ID 分桶：** 用聊天 ID 而非 sessionKey 尾巴做 key。
 
 ---
 
