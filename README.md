@@ -1,7 +1,7 @@
 # 🛠️ OpenClaw Plugin: Tool Trace
 
 Automatically append tool call statistics to the end of each reply.
-Supports **Telegram / Webchat / Slack** text channels and **Feishu (Lark)** card channels.
+Supports **Telegram / Webchat / Slack** text channels and **Feishu (Lark)** card/post channels.
 
 ---
 
@@ -11,15 +11,21 @@ Supports **Telegram / Webchat / Slack** text channels and **Feishu (Lark)** card
 ```
 ...reply content...
 
-Tools used: web_search(3), academic_search(2)
+调用工具：web_search(3)，academic_search(2)
 ```
 
-**Feishu Card:**
+**Feishu Card (note footer):**
+```
+...reply content...
+—————————————————
+Agent: main | Model: deepseek-v4-flash | Provider: volcengine coding plan | 调用工具: web_search(3)
+```
+
+**Feishu Post / CardKit Streaming (inline):**
 ```
 ...reply content...
 
-Tools used: amap-mcp__maps_weather(1)
-Agent: main | Model: deepseek-v4-flash | Provider: volcengine coding plan
+调用工具：web_search(3)，academic_search(2)
 ```
 
 ---
@@ -60,22 +66,34 @@ kill -9 $(pgrep -f openclaw-gateway)
 
 ### 4. Verify
 
-Send a tool-triggering message from TG / Webchat. The reply should end with `Tools used: xxx(y)`.
+Send a tool-triggering message from TG / Webchat. The reply should end with `调用工具：xxx(y)`.
 
 ---
 
 ## 🦜 Feishu (Lark) Support
 
-Feishu plugin uses a separate bundle for card message sending, requiring an extra step.
+Feishu plugin uses a separate bundle for message sending, requiring an extra step.
 
-### How it works
+### How it works (v2)
 
 ```mermaid
 flowchart LR
   Plugin["Plugin after_tool_call"] -->|"Write globalThis.__FEISHU_TOOL_STATS"| Map[Map<targetId, counts>]
-  Map -->|"Consume"| Patch["sendCardFeishu (patched)"]
-  Patch -->|"Append to card.body.elements[].content"| Card["Feishu Card"]
+  Map -->|"Consume"| A["Patch A: resolveCardNote"]
+  Map -->|"Consume"| B["Patch B: closeStreaming"]
+  Map -->|"Consume"| C["Patch C: deliver post"]
+  A -->|"Note footer"| Card["Static Card"]
+  B -->|"Inline append"| Stream["CardKit Streaming"]
+  C -->|"Inline append"| Post["Post Message"]
 ```
+
+Three injection points in `monitor.account-*.js`:
+
+| Patch | Location | Covers | Stats Display |
+|:-----:|:--------:|:------:|:-------------:|
+| **A** | `resolveCardNote` | Static card (non-streaming) | Note footer (grey text) |
+| **B** | `closeStreaming` | CardKit streaming card | Inline at text end |
+| **C** | `deliver` post branch | Post (rich text) message | Inline at text end |
 
 ### Run Patch
 
@@ -84,7 +102,10 @@ cd /path/to/openclaw-plugin-tool-trace
 node patch-feishu.mjs
 ```
 
-The script auto-locates the Feishu plugin's dist directory and injects interception code into the `sendCardFeishu` function.
+The script auto-locates the Feishu plugin's dist directory and:
+1. Removes the old v1 patch from `sendCardFeishu` (if present)
+2. Injects 3 new patches into `monitor.account-*.js`
+
 Idempotent — safe to run multiple times.
 
 **If auto-location fails, specify manually:**
@@ -92,12 +113,6 @@ Idempotent — safe to run multiple times.
 ```bash
 # Find Feishu plugin location
 find / -path "*/@openclaw/feishu/dist" -type d 2>/dev/null
-# Then patch manually
-node -e "
-const fs = require('fs');
-const path = '/path/to/@openclaw/feishu/dist/send-*.js';
-// ... manual modification
-"
 ```
 
 ### Restart Gateway
@@ -110,7 +125,7 @@ kill -9 $(pgrep -f openclaw-gateway)
 
 ### Verify
 
-Send a tool-triggering message from Feishu. The reply should end with `Tools used: xxx(y)`.
+Send a tool-triggering message from Feishu. The reply should include tool statistics.
 
 ---
 
@@ -122,16 +137,18 @@ Send a tool-triggering message from Feishu. The reply should end with `Tools use
 after_tool_call → runToolCounts Map → reply_payload_sending hook → inject at text end
 ```
 
-### Feishu Card Channel
+### Feishu (v2 — Unified)
 
 ```
 after_tool_call → globalThis.__FEISHU_TOOL_STATS[targetId]
                         ↓
-sendCardFeishu (patched) → read statsMap (first entry)
-                        ↓
-                append to card.body.elements[0].content
-                        ↓
-                call original sendCardFeishu to send
+          ┌─────────────┼─────────────┐
+          ▼             ▼             ▼
+   resolveCardNote  closeStreaming  deliver post
+   (static card)   (CardKit stream) (post msg)
+          │             │             │
+          ▼             ▼             ▼
+   Note footer    Inline append   Inline append
 ```
 
 ### Cross-turn Contamination Prevention
@@ -148,9 +165,9 @@ from the stats Map instead of matching by key, avoiding ID format mismatches.
 ### Known Issue: Concurrent DM + Group Chat
 
 If a DM and a group chat are processed simultaneously (within the same channel),
-the stats Map may contain **two entries** at the moment `sendCardFeishu` is called.
+the stats Map may contain **two entries** at the moment a patch is triggered.
 In this rare case, the patch reads the first entry, which may belong to the other conversation,
-causing tool stats to appear on the wrong card.
+causing tool stats to appear on the wrong message.
 
 **Current workaround:** Disable DM with the bot to prevent concurrent dispatches.
 
@@ -158,6 +175,7 @@ causing tool stats to appear on the wrong card.
 1. **FIFO Queue:** Replace the Map with an ordered queue so stats are consumed in dispatch order.
 2. **Run ID Tracking:** Include `runId` in the stats entry and match via `params.runId` (if available).
 3. **Hybrid Key:** Use `params.to` for group chats (direct match) and fallback to queue order for DMs.
+
 ---
 
 ## ⚙️ Customizing Exec Script Name Detection
@@ -185,6 +203,12 @@ While the project repository is single-authored, the grueling warfare against Fe
 
 ---
 
+## ⚠️ Test Status
+
+**This code has NOT been fully tested.** The v2 architecture (migrating from `sendCardFeishu` to `monitor.account`) is a significant refactor that covers CardKit streaming, static cards, and post messages. While the design has been reviewed, the actual runtime behavior may differ. Please test thoroughly in your environment before relying on it in production.
+
+---
+
 ## 📄 License
 
 MIT
@@ -194,7 +218,7 @@ MIT
 # 🛠️ OpenClaw 插件：Tool Trace
 
 在每个回复末尾自动附上本轮调用的工具统计。
-支持 **Telegram / Webchat / Slack** 等文本通道，以及 **飞书（Feishu / Lark）** 卡片通道。
+支持 **Telegram / Webchat / Slack** 等文本通道，以及 **飞书（Feishu / Lark）** 卡片/富文本通道。
 
 ---
 
@@ -207,12 +231,18 @@ MIT
 调用工具：web_search(3)，academic_search(2)
 ```
 
-**飞书卡片:**
+**飞书卡片（note 底栏）:**
+```
+...回复内容...
+—————————————————
+Agent: main | Model: deepseek-v4-flash | Provider: volcengine coding plan | 调用工具: web_search(3)
+```
+
+**飞书富文本 / CardKit 流式（正文末尾）:**
 ```
 ...回复内容...
 
-调用工具：amap-mcp__maps_weather(1)
-Agent: main | Model: deepseek-v4-flash | Provider: volcengine coding plan
+调用工具：web_search(3)，academic_search(2)
 ```
 
 ---
@@ -259,16 +289,28 @@ kill -9 $(pgrep -f openclaw-gateway)
 
 ## 🦜 飞书（Feishu / Lark）支持
 
-飞书插件使用独立的 bundle 管理卡片消息发送，因此多了一个额外步骤。
+飞书插件使用独立的 bundle 管理消息发送，因此多了一个额外步骤。
 
-### 原理
+### 原理（v2）
 
 ```mermaid
 flowchart LR
   Plugin["插件 after_tool_call"] -->|"写入 globalThis.__FEISHU_TOOL_STATS"| Map[Map<targetId, counts>]
-  Map -->|"消费"| Patch["sendCardFeishu（已 patch）"]
-  Patch -->|"追加到 card.body.elements[].content"| Card["飞书卡片"]
+  Map -->|"消费"| A["Patch A: resolveCardNote"]
+  Map -->|"消费"| B["Patch B: closeStreaming"]
+  Map -->|"消费"| C["Patch C: deliver post"]
+  A -->|"Note 底栏"| Card["静态卡片"]
+  B -->|"正文末尾追加"| Stream["CardKit 流式"]
+  C -->|"正文末尾追加"| Post["富文本消息"]
 ```
+
+在 `monitor.account-*.js` 中注入 3 个点：
+
+| Patch | 位置 | 覆盖场景 | 统计显示位置 |
+|:-----:|:----:|:--------:|:-----------:|
+| **A** | `resolveCardNote` | 静态卡片（非流式） | Note 底栏（灰色小字） |
+| **B** | `closeStreaming` | CardKit 流式卡片 | 正文末尾 |
+| **C** | `deliver` post 分支 | 富文本（post）消息 | 正文末尾 |
 
 ### 执行 Patch
 
@@ -277,7 +319,10 @@ cd /path/to/openclaw-plugin-tool-trace
 node patch-feishu.mjs
 ```
 
-脚本会自动定位飞书插件的 dist 目录，在 `sendCardFeishu` 函数入口注入拦截代码。
+脚本会自动定位飞书插件的 dist 目录，并：
+1. 移除 v1 旧 patch（`sendCardFeishu` 中的，如有）
+2. 注入 3 个新 patch 到 `monitor.account-*.js`
+
 幂等设计，重复运行安全。
 
 **如脚本未能自动定位飞书路径，可手动指定：**
@@ -285,12 +330,6 @@ node patch-feishu.mjs
 ```bash
 # 查看飞书插件实际位置
 find / -path "*/@openclaw/feishu/dist" -type d 2>/dev/null
-# 然后手动 patch
-node -e "
-const fs = require('fs');
-const path = '/path/to/@openclaw/feishu/dist/send-*.js';
-// ... 手动修改
-"
 ```
 
 ### 重启 Gateway
@@ -303,7 +342,7 @@ kill -9 $(pgrep -f openclaw-gateway)
 
 ### 验证
 
-从飞书发一条会调用工具的对话，回复末尾应出现 `调用工具：xxx(y)`。
+从飞书发一条会调用工具的对话，回复中应包含工具统计信息。
 
 ---
 
@@ -315,16 +354,18 @@ kill -9 $(pgrep -f openclaw-gateway)
 after_tool_call → runToolCounts Map → reply_payload_sending hook → 注入 text 末尾
 ```
 
-### 飞书卡片通道
+### 飞书（v2 — 统一注入）
 
 ```
 after_tool_call → globalThis.__FEISHU_TOOL_STATS[targetId]
                         ↓
-sendCardFeishu（已 patch）→ 读取 statsMap（取第一条）
-                        ↓
-                追加到 card.body.elements[0].content
-                        ↓
-                调用原始 sendCardFeishu 发送
+          ┌─────────────┼─────────────┐
+          ▼             ▼             ▼
+   resolveCardNote  closeStreaming  deliver post
+   (静态卡片)       (CardKit 流式)  (富文本消息)
+          │             │             │
+          ▼             ▼             ▼
+   Note 底栏       正文末尾追加    正文末尾追加
 ```
 
 ### 跨轮防污染
@@ -341,7 +382,7 @@ sendCardFeishu（已 patch）→ 读取 statsMap（取第一条）
 ### 已知问题：单聊与群聊并发
 
 如果单聊和群聊消息同时被处理（同一 channel 内），
-stats Map 在 `sendCardFeishu` 被调用时可能包含**两条记录**。
+stats Map 在 patch 被触发时可能包含**两条记录**。
 这时 patch 读取第一条记录，可能导致工具统计显示在错误的卡片上。
 
 **当前解决方案：** 禁用机器人单聊，防止并发 dispatch。
@@ -375,6 +416,12 @@ const EXEC_SCRIPT_PATTERNS = [
 | **驻场启动器** <br>• 挖掘原生 `plugin-sdk`<br>• 监控标准钩子管道<br>• 执行本地化代码修补 | **远程智囊团** <br>• 解码飞书内部 AST 路由<br>• 制定拉取式注入策略<br>• 盲解回退交互卡片 bug |
 
 *感谢 AI 工作组执行重复的 AST 提取和管道追踪，让作者不用烧掉自己的账户来支付全量原始 API token。*
+
+---
+
+## ⚠️ 测试状态
+
+**此代码尚未经过完整测试。** v2 架构（从 `sendCardFeishu` 迁移到 `monitor.account`）是一次重大重构，覆盖了 CardKit 流式、静态卡片和富文本消息。虽然设计经过了讨论和审查，但实际运行时行为可能与预期有差异。请在生产环境依赖此代码前充分测试。
 
 ---
 
