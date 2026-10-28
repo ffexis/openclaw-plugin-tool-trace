@@ -5,8 +5,10 @@
   "activation": {
     "onStartup": true
   },
-  "contracts": {},
-  "onCapabilities": ["hook"],
+  "contracts": {
+    "tools": ["academic_search", "pmphai_query", "hgnc_lookup", "google_books_search", "ccdas_lookup", "name_sort", "yuanwen_search"]
+  },
+  "onCapabilities": ["tool", "hook"],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
