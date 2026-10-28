@@ -23,6 +23,19 @@ Supports **Telegram / Webchat / Slack** text channels and **Feishu (Lark)** card
 
 ---
 
+## 🧪 Tested Versions
+
+| Component | Version |
+|---|---|
+| OpenClaw core | **2026.9.3** (`1391f7c`) |
+| `@openclaw/feishu` | **2026.9.3** |
+| OS | Linux (Feishu channel end-to-end verified) |
+| Last verified | 2026-10-28 |
+
+**Version sensitivity:** v3 depends on the public `reply_payload_sending` hook and its payload fields (`kind`, `channel`, `sessionKey`, `runId`, `payload.text`), not on Feishu's internal dist files. It is far less brittle than the old AST patch, but re-test after upgrading OpenClaw or the Feishu plugin — in particular the `previewStreamingEnabled = streamingEnabled && !modifyingHooksRegistered` guard, which controls the streaming trade-off.
+
+---
+
 ## 📦 Installation
 
 ### 1. Clone to local
@@ -147,7 +160,7 @@ While the project repository is single-authored, the grueling warfare against Fe
 
 ## ⚠️ Test Status
 
-**v3 uses the official hook path.** Tested on OpenClaw 2026.9.3 + @openclaw/feishu 2026.9.3 (Windows/Linux). The main behavioral change is that Feishu preview streaming is disabled while any modifying reply hook is registered — verify this trade-off in your environment before relying on it.
+**v3 uses the official hook path.** Verified end-to-end on OpenClaw 2026.9.3 + @openclaw/feishu 2026.9.3 (Linux, Feishu channel). Not yet tested on Windows/macOS. The main behavioral change is that Feishu preview streaming is disabled while any modifying reply hook is registered — verify this trade-off in your environment before relying on it.
 
 ---
 
@@ -161,6 +174,19 @@ MIT
 
 在每个回复末尾自动附上本轮调用的工具统计。
 支持 **Telegram / Webchat / Slack** 等文本通道，以及 **飞书（Feishu / Lark）** 卡片/富文本通道。
+
+---
+
+## 🧪 测试版本
+
+| 组件 | 版本 |
+|---|---|
+| OpenClaw 核心 | **2026.9.3** (`1391f7c`) |
+| `@openclaw/feishu` | **2026.9.3** |
+| 系统 | Linux（飞书通道端到端验证） |
+| 最后验证 | 2026-10-28 |
+
+**版本敏感说明：** v3 依赖公开的 `reply_payload_sending` hook 及其 payload 字段（`kind`、`channel`、`sessionKey`、`runId`、`payload.text`），不依赖飞书插件的内部 dist 文件。它比旧的 AST patch 稳得多，但升级 OpenClaw 或飞书插件后仍建议重测——尤其是 `previewStreamingEnabled = streamingEnabled && !modifyingHooksRegistered` 这条守卫，它决定了流式行为的取舍。
 
 ---
 
